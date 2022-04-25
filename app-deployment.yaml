@@ -1,0 +1,112 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: app
+spec:
+  replicas: 3
+  minReadySeconds: 5
+  selector:
+    matchLabels:
+      app: app
+  template:
+    metadata:
+      name: app
+      labels:
+        app: app
+    spec:
+      containers:
+      - name: cloudsql-proxy
+        image: gcr.io/cloudsql-docker/gce-proxy:1.11
+        command: ["/cloud_sql_proxy",
+                  "-instances=pro-kayak-218810:asia-northeast1:humanscape-server-dev=tcp:5432",
+                  "-credential_file=/secrets/cloudsql/credentials.json"]
+        securityContext:
+          runAsUser: 2  # non-root user
+          allowPrivilegeEscalation: false
+        volumeMounts:
+          - name: cloudsql-instance-credentials
+            mountPath: /secrets/cloudsql
+            readOnly: true
+      - name: app
+        image: gcr.io/pro-kayak-218810/humanscape-dev-api:v2.0.7
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3000
+        resources: {}
+        env:
+          - name: NODE_ENV
+            value: development
+          - name: POSTGRES_DB_HOST
+            value: 127.0.0.1:5432
+          - name: POSTGRES_DB
+            value: humanscape-server-dev
+          - name: POSTGRES_USER
+            valueFrom:
+              secretKeyRef:
+                name: cloudsql-db-credentials
+                key: username
+          - name: POSTGRES_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: cloudsql-db-credentials
+                key: password
+          - name: KRPS_DB_HOST
+            valueFrom:
+              secretKeyRef:
+                name: krps-db
+                key: host
+          - name: KRPS_DB
+            valueFrom:
+              secretKeyRef:
+                name: krps-db
+                key: database
+          - name: KRPS_DIALECT
+            valueFrom:
+              secretKeyRef:
+                name: krps-db
+                key: dialect
+          - name: KRPS_USER
+            valueFrom:
+              secretKeyRef:
+                name: krps-db
+                key: username
+          - name: KRPS_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: krps-db
+                key: password
+          - name: USER_SESSION_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: salt
+                key: userSessionToken
+          - name: MAILER_USER
+            valueFrom:
+              secretKeyRef:
+                name: mailer
+                key: username
+          - name: MAILER_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: mailer
+                key: password
+        volumeMounts:
+          - name: credentials-dev-firebase
+            mountPath: /secrets/firebase-account
+            readOnly: true
+          - name: credentials-dev
+            mountPath: /secrets
+            readOnly: true
+      # [START volumes]
+      restartPolicy: Always
+      volumes:
+        - name: cloudsql-instance-credentials
+          secret:
+            secretName: cloudsql-instance-credentials
+        - name: credentials-dev-firebase
+          secret:
+            secretName: firebase-account
+        - name: credentials-dev
+          secret:
+            secretName: credentials-dev
+      # [END volumes]
